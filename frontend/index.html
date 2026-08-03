@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpiderTester Electron UI</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card">
+        <h1>SpiderTester</h1>
+        <p class="subtitle">Generate Playwright tests from a target URL and optional CLI flags.</p>
+
+        <form id="runner-form" class="form-grid">
+          <label class="field">
+            <span>URL</span>
+            <input id="url-input" type="url" placeholder="https://example.com" required />
+          </label>
+
+          <div class="flag-panel">
+            <div class="flag-header">
+              <h2>Flags</h2>
+              <button id="add-flag-btn" type="button" class="secondary-btn">Add flag</button>
+            </div>
+            <div id="flag-list" class="flag-list"></div>
+          </div>
+
+          <div class="actions">
+            <button id="run-btn" type="submit">Run SpiderTester</button>
+          </div>
+        </form>
+
+        <section class="result-panel" aria-live="polite">
+          <h2>Status</h2>
+          <div id="status-message" class="status-message neutral">Ready to process a URL.</div>
+          <pre id="status-logs" class="status-logs">No backend output yet.</pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

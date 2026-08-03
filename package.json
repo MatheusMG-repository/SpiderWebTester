@@ -1,0 +1,21 @@
+{
+  "name": "spidertester",
+  "version": "1.0.0",
+  "description": "HTML Scraper and Local AI Test Suite Generator",
+  "main": "electron-main.js",
+  "scripts": {
+    "generate": "tsx backend/main.ts",
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "electron": "^37.2.0",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

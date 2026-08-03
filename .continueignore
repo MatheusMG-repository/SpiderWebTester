@@ -1,0 +1,14 @@
+# Ignore user-level config files
+.continue/
+config.yaml
+config.json
+
+# Ignore build artifacts and dependencies
+node_modules/
+dist/
+build/
+.git/
+test-results/
+tests/
+*.log
+*.sqlite

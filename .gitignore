@@ -1,0 +1,32 @@
+# Node.js specific ignores
+node_modules/
+
+# TypeScript compilation output
+dist/
+build/
+
+# Electron-specific ignores
+npm-debug.log
+
+# Test files and results
+test/
+tests/
+test-results/
+
+# Build logs
+*.log
+
+# SQLite database files
+*.sqlite
+
+# IDE/Editor specific ignores
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# User-level config files
+.continue/config.yaml
+.continue/config.json
