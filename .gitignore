@@ -10,7 +10,7 @@ npm-debug.log
 
 # Test files and results
 test/
-tests/
+tests/**/artifacts/
 test-results/
 
 # Build logs

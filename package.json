@@ -5,6 +5,7 @@
   "main": "electron-main.js",
   "scripts": {
     "generate": "tsx backend/main.ts",
+    "test:generated": "playwright test --config=playwright.config.ts",
     "start": "electron .",
     "dev": "electron ."
   },

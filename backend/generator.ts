@@ -1,27 +1,45 @@
 import { AIConfig } from './ai-selector';
 
-/**
- * Builds a provider-agnostic prompt for the LLM
- * to request a Playwright frontend test suite.
- */
-export function buildPrompt(contextStr: string): string {
+export function buildPageObjectPrompt(contextStr: string, targetUrl: string): string {
   return `You are a senior frontend QA automation engineer.
-Your task is to analyze the page description below and write a comprehensive, robust, and clean Playwright test suite using TypeScript.
+Your task is to analyze the page description below and create a robust Playwright Page Object Model in TypeScript.
+
+Authoritative target URL for this page: ${targetUrl}
+Use this exact URL in the page object's \`goto()\` method. Do not substitute an example, generic, or inferred URL.
 
 Here is the context of the scraped target page (including page title, URL, interactive elements, captured API requests, and accessibility tree):
 
 ${contextStr}
 
-Requirements for the test suite:
-1. Use standard Playwright test library import: \`import { test, expect } from '@playwright/test';\`
-2. Write multiple scenarios if applicable (e.g. page loading, clicking interactive buttons, checking fields, verifying layout structure).
-3. Use the correct selectors provided in the context (like id, data-testid, tag names, etc.).
-4. Use clean assertions, for example asserting visibility, text content, enabled/disabled state, and page titles.
-5. If the context contains API endpoints, write a test showing how to intercept or wait for these endpoints using \`page.route\` or \`page.waitForResponse\`.
-6. Make sure to structure the tests in a clean \`test.describe\` block.
-7. Return ONLY the TypeScript code of the test suite inside a markdown code block (starting with \`\`\`typescript and ending with \`\`\`). Do not include any conversations, text, or explanations outside the code block.
+Requirements for the page object:
+1. Export a class named \`PageObject\` and accept a Playwright \`Page\` in its constructor.
+2. Implement an async \`goto()\` method that navigates to the exact authoritative target URL above.
+3. Encapsulate useful page locators and user actions as readable properties and methods. Prefer accessible Playwright locators when supported by the context; otherwise use the supplied selectors.
+4. Keep selectors and interaction logic in this class. Do not include tests, assertions, or test-runner imports.
+5. Import types from \`playwright\` and return ONLY the TypeScript code inside a markdown code block (starting with \`\`\`typescript and ending with \`\`\`). Do not include explanations outside the code block.
 
-Please output the Playwright test code:
+Please output the page object code:
+`;
+}
+
+export function buildTestPrompt(pageObjectCode: string, pageObjectImportPath: string): string {
+  return `You are a senior frontend QA automation engineer.
+Write a comprehensive, maintainable Playwright test suite in TypeScript using the supplied Page Object Model.
+
+Page object module:
+\`\`\`typescript
+${pageObjectCode}
+\`\`\`
+
+Requirements for the test suite:
+1. Import \`test\` and \`expect\` from \`@playwright/test\`.
+2. Import \`PageObject\` from \`${pageObjectImportPath}\`, instantiate it with the test's \`page\`, and call its \`goto()\` method in setup.
+3. Use only locators and actions exposed by the PageObject for page interaction; do not duplicate selectors or reimplement its behavior in the tests.
+4. Write meaningful scenarios and assertions based on the available PageObject API. Do not invent methods or application behavior not supported by the PageObject.
+5. Structure the suite in a \`test.describe\` block.
+6. Return ONLY the TypeScript code inside a markdown code block (starting with \`\`\`typescript and ending with \`\`\`). Do not include explanations outside the code block.
+
+Please output the test code:
 `;
 }
 

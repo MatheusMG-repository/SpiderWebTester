@@ -46,7 +46,11 @@ ipcMain.handle('run-spidertester', async (_event, payload) => {
     };
   }
 
-  const args = ['tsx', 'backend/main.ts', url];
+  const args = [
+    path.join(app.getAppPath(), 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+    'backend/main.ts',
+    url,
+  ];
 
   flags.forEach(({ flag, value }) => {
     if (!flag) {
@@ -65,8 +69,7 @@ ipcMain.handle('run-spidertester', async (_event, payload) => {
     }
   });
 
-  const isWindows = process.platform === 'win32';
-  const command = isWindows ? 'npx.cmd' : 'npx';
+  const command = process.env.npm_node_execpath || 'node';
 
   return new Promise((resolve) => {
     const child = spawn(command, args, {

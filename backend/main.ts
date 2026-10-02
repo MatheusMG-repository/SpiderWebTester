@@ -1,9 +1,34 @@
 import { WebScraperService } from './scraper';
 import { formatContextForLLM } from './formatter';
-import { buildPrompt, callAI } from './generator';
+import { buildPageObjectPrompt, buildTestPrompt, callAI } from './generator';
 import { selectAI, ParsedAIArgs } from './ai-selector';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
+
+function runGeneratedTests(testPaths: string[], artifactsDir: string): Promise<number> {
+  const playwrightCli = require.resolve('@playwright/test/cli');
+  const testArgs = testPaths.map((testPath) =>
+    path.resolve(testPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  );
+  const args = [playwrightCli, 'test', '--config=playwright.config.ts', ...testArgs];
+
+  fs.mkdirSync(artifactsDir, { recursive: true });
+
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, args, {
+      cwd: process.cwd(),
+      env: { ...process.env, SPIDERTESTER_ARTIFACTS_DIR: artifactsDir },
+      stdio: 'inherit',
+    });
+
+    child.on('error', (error) => {
+      console.error('Failed to start Playwright:', error.message);
+      resolve(1);
+    });
+    child.on('close', (code) => resolve(code ?? 1));
+  });
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -106,7 +131,7 @@ async function main() {
   // Scrape the initial landing page
   // -------------------------------------------------------------------------
   const scraper = new WebScraperService();
-  console.log(`\n[1/3] Scraping initial landing page: ${targetUrl}...`);
+  console.log(`\n[1/4] Scraping initial landing page: ${targetUrl}...`);
 
   let landingPageData;
   try {
@@ -133,7 +158,8 @@ async function main() {
   // -------------------------------------------------------------------------
   // Process each page
   // -------------------------------------------------------------------------
-  console.log(`\n[2/3] Processing pages & generating tests...`);
+  console.log(`\n[2/4] Processing pages & generating tests...`);
+  const generatedTestPaths: string[] = [];
 
   for (let i = 0; i < allPagesToTest.length; i++) {
     const pageItem = allPagesToTest[i];
@@ -154,51 +180,88 @@ async function main() {
       }
     }
 
-    // Build prompt and call the selected AI
-    const promptContext = formatContextForLLM(pageData);
-    const prompt = buildPrompt(promptContext);
+    const pageUrlObj = new URL(pageItem.url);
+    const hostname = pageUrlObj.hostname.replace(/[^a-zA-Z0-9.-]/g, '_') || 'unknown';
+    const testsDir = path.join(process.cwd(), 'tests');
+    const targetDir = path.join(testsDir, hostname);
+    let pageName = pageUrlObj.pathname.trim().replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9.-]/g, '_');
+    if (!pageName) pageName = 'index';
 
-    console.log(`Calling AI backend...`);
-    let testCode = '';
+    const pageObjectPath = path.join(targetDir, `${pageName}.page.ts`);
+    const testPath = path.join(targetDir, `${pageName}.spec.ts`);
+
+    // Generate the page object from the scraped page context first.
+    const promptContext = formatContextForLLM(pageData);
+    console.log(`Generating page object...`);
+    let pageObjectCode = '';
     try {
-      testCode = await callAI(prompt, aiConfig);
+      pageObjectCode = await callAI(buildPageObjectPrompt(promptContext, pageItem.url), aiConfig);
     } catch (err: any) {
-      console.error(`Failed to generate tests for ${pageItem.url}:`, err.message || err);
+      console.error(`Failed to generate page object for ${pageItem.url}:`, err.message || err);
       if (aiConfig.mode === 'local') {
         console.error('Tip: verify Ollama is running (`ollama serve`) and the model is pulled.');
       }
-      console.log(`Skipping test generation for this page.`);
+      console.log(`Skipping this page.`);
       continue;
     }
 
-    // Save the generated test file
-    console.log(`[3/3] Saving generated test suite...`);
     try {
-      const pageUrlObj = new URL(pageItem.url);
-      const hostname = pageUrlObj.hostname.replace(/[^a-zA-Z0-9.-]/g, '_') || 'unknown';
-      const testsDir = path.join(process.cwd(), 'tests');
-      const targetDir = path.join(testsDir, hostname);
-
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
         console.log(`Created directory: ${targetDir}`);
       }
 
-      let pageName = pageUrlObj.pathname.trim().replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9.-]/g, '_');
-      if (!pageName) pageName = 'index';
+      fs.writeFileSync(pageObjectPath, pageObjectCode, 'utf8');
+      console.log(`Saved page object: ${pageObjectPath}`);
+    } catch (err: any) {
+      console.error(`Failed to save page object for ${pageItem.url}:`, err.message || err);
+      continue;
+    }
 
-      const filename = `${pageName}.spec.ts`;
-      const targetFilePath = path.join(targetDir, filename);
+    console.log(`Generating tests from page object...`);
+    let testCode = '';
+    try {
+      testCode = await callAI(buildTestPrompt(pageObjectCode, `./${pageName}.page`), aiConfig);
+    } catch (err: any) {
+      console.error(`Failed to generate tests for ${pageItem.url}:`, err.message || err);
+      if (aiConfig.mode === 'local') {
+        console.error('Tip: verify Ollama is running (`ollama serve`) and the model is pulled.');
+      }
+      console.log(`Page object saved; skipping test generation for this page.`);
+      continue;
+    }
 
-      fs.writeFileSync(targetFilePath, testCode, 'utf8');
-      console.log(`🎉 Saved: ${targetFilePath}`);
+    console.log(`[3/4] Saving generated test suite...`);
+    try {
+      fs.writeFileSync(testPath, testCode, 'utf8');
+      console.log(`Saved test suite: ${testPath}`);
+      generatedTestPaths.push(testPath);
     } catch (err: any) {
       console.error(`Failed to save test file for ${pageItem.url}:`, err.message || err);
     }
   }
 
+  if (generatedTestPaths.length > 0) {
+    console.log(`\n[4/4] Running ${generatedTestPaths.length} generated test suite(s) with Playwright...`);
+    const runId = new Date().toISOString().replace(/[:.]/g, '-') + `-${process.pid}`;
+    const artifactsDir = path.join(path.dirname(generatedTestPaths[0]), 'artifacts', `run-${runId}`);
+    const testExitCode = await runGeneratedTests(generatedTestPaths, artifactsDir);
+    if (testExitCode !== 0) {
+      console.error(`Playwright test run failed with exit code ${testExitCode}.`);
+      process.exitCode = testExitCode;
+    }
+    console.log(`JUnit report: ${path.join(artifactsDir, 'junit.xml')}`);
+    console.log(`Playwright traces: ${path.join(artifactsDir, 'playwright')}`);
+  } else {
+    console.log('\nNo generated test suites to run.');
+  }
+
   console.log('\n=============================================');
-  console.log(`🎉 ALL PROCESSES COMPLETED.`);
+  if (process.exitCode === undefined || process.exitCode === 0) {
+    console.log(`🎉 ALL PROCESSES COMPLETED.`);
+  } else {
+    console.log('Generation completed with Playwright failures.');
+  }
   console.log('=============================================\n');
 }
 

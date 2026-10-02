@@ -1,0 +1,99 @@
+name: Generated Playwright Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_folder:
+        description: Test folder relative to the repository root, such as tests/example.com
+        required: true
+        default: tests
+        type: string
+  push:
+    paths:
+      - 'tests/**/*.spec.ts'
+      - 'tests/**/*.page.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/playwright-generated.yml'
+  pull_request:
+    paths:
+      - 'tests/**/*.spec.ts'
+      - 'tests/**/*.page.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/playwright-generated.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate test folder and prepare artifact directory
+        id: test_paths
+        env:
+          TEST_FOLDER_INPUT: ${{ github.event.inputs.test_folder || 'tests' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_folder="${TEST_FOLDER_INPUT%/}"
+
+          case "$test_folder" in
+            tests|tests/*) ;;
+            *) echo "::error::Choose a folder inside tests/, for example tests/example.com"; exit 1 ;;
+          esac
+
+          if [[ "$test_folder" == *".."* ]]; then
+            echo "::error::The test folder must not contain traversal segments"
+            exit 1
+          fi
+
+          if [[ ! -d "$test_folder" ]]; then
+            echo "::error::Test folder does not exist: $test_folder"
+            exit 1
+          fi
+
+          spec_file=$(find "$test_folder" -type d -name artifacts -prune -o -type f -name '*.spec.ts' -print -quit)
+          if [[ -z "$spec_file" ]]; then
+            echo "::error::No Playwright spec files found in $test_folder"
+            exit 1
+          fi
+
+          artifacts_dir="$test_folder/artifacts/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$artifacts_dir"
+          echo "test_folder=$test_folder" >> "$GITHUB_OUTPUT"
+          echo "artifacts_dir=$artifacts_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Run Playwright tests
+        env:
+          CI: true
+          SPIDERTESTER_ARTIFACTS_DIR: ${{ steps.test_paths.outputs.artifacts_dir }}
+          TEST_FOLDER: ${{ steps.test_paths.outputs.test_folder }}
+        shell: bash
+        run: |
+          test_filter=$(node -e 'console.log(process.argv[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))' "$TEST_FOLDER")
+          npm run test:generated -- "$test_filter"
+
+      - name: Upload JUnit report and Playwright traces
+        if: always() && steps.test_paths.outputs.artifacts_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.test_paths.outputs.artifacts_dir }}
+          if-no-files-found: warn
+          retention-days: 14

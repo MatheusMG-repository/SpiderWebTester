@@ -13,7 +13,8 @@ The project has two main ways to work with it:
 2. Scrapes the landing page and related linked pages
 3. Builds a prompt from the scraped page context
 4. Sends that context to a selected AI provider or local Ollama model
-5. Saves generated Playwright specs in the `tests/` folder
+5. Generates a page object from the scraped context, then generates Playwright tests from that page object
+6. Saves the page object and spec together under the hostname-based `tests/` folder
 
 ## Project structure
 
@@ -61,6 +62,20 @@ npx tsx backend/main.ts <url> [options]
 - `gemini` → `gemini-1.5-flash`
 - `anthropic` → `claude-3-5-haiku-latest`
 
+## Running generated tests
+
+After generating specs, SpiderTester automatically runs those specs with Playwright. To rerun all generated specs later, use:
+
+```sh
+npm run test:generated
+```
+
+Each automatic run gets a unique artifact directory beside its generated specs: `tests/<hostname>/artifacts/run-<timestamp>/`. It contains `junit.xml` and a `playwright/` directory with test output and failure traces. Manual reruns also use a unique artifact directory.
+
+## GitHub Actions
+
+The `Generated Playwright Tests` workflow runs all committed specs on pushes and pull requests that change tests. To run a specific website folder, start the workflow manually and set `test_folder` to a path such as `tests/example.com`. Generated `*.spec.ts` and `*.page.ts` files can be committed; run artifacts remain ignored. JUnit reports and traces are uploaded as a workflow artifact for 14 days.
+
 ### Examples
 
 ```sh
@@ -74,7 +89,7 @@ npx tsx backend/main.ts https://example.com --model qwen2.5-coder:7b
 
 - The app works in local mode using Ollama and a model such as `qwen2.5-coder:7b`.
 - Cloud mode is enabled when an API key is provided.
-- Generated test files are saved under a hostname-based folder inside `tests/`.
+- Generated page objects (`*.page.ts`) and test files (`*.spec.ts`) are saved together under a hostname-based folder inside `tests/`.
 
 ## Contributing
 
